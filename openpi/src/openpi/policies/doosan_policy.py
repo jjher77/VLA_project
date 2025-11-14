@@ -77,5 +77,6 @@ class DoosanOutputs(transforms.DataTransformFn):
     dims: int = 7
 
     def __call__(self, data: dict) -> dict:
-        actions = np.asarray(data["actions"][:, :, : self.dims])
+        actions = np.asarray(data["actions"])
+        actions = actions[..., : self.dims]
         return {"actions": actions}
