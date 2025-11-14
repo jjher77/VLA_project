@@ -73,7 +73,10 @@ class DoosanPolicyBridge(Node):
     # --- Policy loop ------------------------------------------------------- #
     def _tick(self):
         with self._lock:
-            if None in (self._top_image, self._wrist_image, self._front_image, self._joint_state):
+            if any(
+                data is None
+                for data in (self._top_image, self._wrist_image, self._front_image, self._joint_state)
+            ):
                 return
             obs = {
                 "observation/top_image": self._top_image.copy(),
