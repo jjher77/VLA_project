@@ -30,8 +30,11 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 import rclpy
+try:
+    from rcl_interfaces.msg import ParameterDescriptor
+except ImportError:  # pragma: no cover - fallback if interface not available
+    ParameterDescriptor = None
 from rclpy.node import Node
-from rcl_interfaces.msg import ParameterDescriptor
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 
@@ -134,17 +137,24 @@ class MultiCameraPublisher(Node):
 
         self.declare_parameter("width", 640)
         self.declare_parameter("height", 480)
-        self.declare_parameter("fps", 30.0)
-        dyn_desc = ParameterDescriptor(dynamic_typing=True)
-        self.declare_parameter("top_serial", "343122300152", dyn_desc)
-        self.declare_parameter("front_serial", "343622300813", dyn_desc)
-        self.declare_parameter("wrist_device", "/dev/video2", dyn_desc)
-        self.declare_parameter("top_topic", "/camera/top/color/image_raw", dyn_desc)
-        self.declare_parameter("front_topic", "/camera/front/color/image_raw", dyn_desc)
-        self.declare_parameter("wrist_topic", "/camera/wrist/color/image_raw", dyn_desc)
-        self.declare_parameter("top_frame_id", "camera_top_optical_frame", dyn_desc)
-        self.declare_parameter("front_frame_id", "camera_front_optical_frame", dyn_desc)
-        self.declare_parameter("wrist_frame_id", "camera_wrist_optical_frame", dyn_desc)
+        self.declare_parameter("fps", 15.0)
+        dyn_desc = ParameterDescriptor(dynamic_typing=True) if ParameterDescriptor else None
+
+        def declare(name: str, default):
+            if dyn_desc:
+                self.declare_parameter(name, default, dyn_desc)
+            else:
+                self.declare_parameter(name, default)
+
+        declare("top_serial", "343122300152")
+        declare("front_serial", "343622300813")
+        declare("wrist_device", "/dev/video2")
+        declare("top_topic", "/camera/top/color/image_raw")
+        declare("front_topic", "/camera/front/color/image_raw")
+        declare("wrist_topic", "/camera/wrist/color/image_raw")
+        declare("top_frame_id", "camera_top_optical_frame")
+        declare("front_frame_id", "camera_front_optical_frame")
+        declare("wrist_frame_id", "camera_wrist_optical_frame")
 
         width = int(self.get_parameter("width").value)
         height = int(self.get_parameter("height").value)
@@ -180,7 +190,7 @@ class MultiCameraPublisher(Node):
             ),
         }
 
-        self._publishers = {
+        self._camera_publishers = {
             name: self.create_publisher(Image, cfg.topic, 10)
             for name, cfg in self._configs.items()
         }
@@ -207,7 +217,7 @@ class MultiCameraPublisher(Node):
             msg = self._bridge.cv2_to_imgmsg(image, encoding="bgr8")
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = cfg.frame_id
-            self._publishers[name].publish(msg)
+            self._camera_publishers[name].publish(msg)
 
     def destroy_node(self) -> bool:
         for source in self._sources.values():
