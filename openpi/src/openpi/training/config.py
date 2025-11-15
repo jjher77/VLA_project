@@ -639,7 +639,7 @@ _CONFIGS = [
             assets=AssetsConfig(asset_id="droid"),
             data_transforms=lambda model: _transforms.Group(
                 inputs=[doosan_policy.DoosanInputs(model_type=model.model_type)],
-                outputs=[doosan_policy.DoosanOutputs(dims=7)],
+                outputs=[doosan_policy.DoosanOutputs(dims=6)],
             ),
             base_config=DataConfig(prompt_from_task=False),
         ),

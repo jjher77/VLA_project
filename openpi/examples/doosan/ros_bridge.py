@@ -13,6 +13,8 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState
 
+from dsr_msgs2.srv import MoveJoint
+
 from openpi_client.websocket_client_policy import WebsocketClientPolicy
 
 
@@ -40,6 +42,11 @@ class DoosanPolicyBridge(Node):
         self.create_subscription(Image, args.wrist_topic, self._wrist_cb, qos)
         self.create_subscription(Image, args.front_topic, self._front_cb, qos)
         self.create_subscription(JointState, args.joint_topic, self._joint_cb, qos)
+
+        self._move_joint_cli = self.create_client(MoveJoint, f"/{args.robot_id}/motion/move_joint")
+        while not self._move_joint_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info("Waiting for /%s/motion/move_joint ..." % args.robot_id)
+        self._pending_motion = None
 
         self._log_buffer = deque(maxlen=10)
         self.create_timer(args.publish_period, self._tick)
@@ -92,6 +99,34 @@ class DoosanPolicyBridge(Node):
         if len(self._log_buffer) == self._log_buffer.maxlen:
             self.get_logger().info(f"Latest policy actions: {self._log_buffer[-1]}")
             self._log_buffer.clear()
+        self._send_motion(actions)
+
+    def _send_motion(self, actions: np.ndarray):
+        if self._pending_motion is not None and not self._pending_motion.done():
+            return
+
+        actions = np.asarray(actions)
+        if actions.ndim == 1:
+            seq = actions
+        elif actions.ndim == 2:
+            seq = actions[0]
+        elif actions.ndim == 3:
+            seq = actions[0, 0]
+        else:
+            self.get_logger().warn("Unexpected actions shape: %s", actions.shape)
+            return
+
+        delta = seq[:6] * self._args.delta_scale
+        req = MoveJoint.Request()
+        req.pos = delta.tolist()
+        req.vel = self._args.move_vel
+        req.acc = self._args.move_acc
+        req.time = self._args.move_time
+        req.mode = 1  # relative move
+        req.blend_type = 0
+        req.sync_type = 0
+
+        self._pending_motion = self._move_joint_cli.call_async(req)
 
 
 def main():
@@ -100,10 +135,15 @@ def main():
     parser.add_argument("--policy-port", type=int, default=8000)
     parser.add_argument("--prompt", default="청소해 줘")
     parser.add_argument("--publish-period", type=float, default=0.2)
+    parser.add_argument("--robot-id", default="dsr01")
     parser.add_argument("--top-topic", default="/camera/top/color/image_raw")
     parser.add_argument("--wrist-topic", default="/camera/wrist/color/image_raw")
     parser.add_argument("--front-topic", default="/camera/front/color/image_raw")
     parser.add_argument("--joint-topic", default="/dsr01/joint_states")
+    parser.add_argument("--delta-scale", type=float, default=0.05, help="Scale factor applied to policy deltas.")
+    parser.add_argument("--move-vel", type=float, default=60.0)
+    parser.add_argument("--move-acc", type=float, default=60.0)
+    parser.add_argument("--move-time", type=float, default=0.0)
     args = parser.parse_args()
 
     rclpy.init()

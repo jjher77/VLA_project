@@ -72,9 +72,9 @@ class DoosanInputs(transforms.DataTransformFn):
 
 @dataclasses.dataclass(frozen=True)
 class DoosanOutputs(transforms.DataTransformFn):
-    """Returns only the first 7 dims (6 joints + gripper) from policy outputs."""
+    """Returns only the first N dims (default: 6 joints) from policy outputs."""
 
-    dims: int = 7
+    dims: int = 6
 
     def __call__(self, data: dict) -> dict:
         actions = np.asarray(data["actions"])
