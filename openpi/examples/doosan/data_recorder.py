@@ -162,7 +162,7 @@ def main():
     parser.add_argument("--wrist-topic", default="/camera/wrist/color/image_raw")
     parser.add_argument("--front-topic", default="/camera/front/color/image_raw")
     parser.add_argument("--joint-topic", default="/dsr01/joint_states")
-    parser.add_argument("--gripper-topic", default="/gr/joint_states")
+    parser.add_argument("--gripper-topic", default="/joint_states")
     parser.add_argument("--output-dir", default="/tmp/doosan_dataset")
     parser.add_argument("--namespace", default="/doosan_data_recorder")
     parser.add_argument("--default-prompt", default="Clean up the trash on the table.")
