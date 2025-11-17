@@ -116,7 +116,9 @@ class DoosanPolicyBridge(Node):
             self.get_logger().warn("Unexpected actions shape: %s", actions.shape)
             return
 
-        delta = seq[:6] * self._args.delta_scale
+        # Policy deltas are in radians; convert to degrees for Doosan MoveJoint.
+        rad_to_deg = 180.0 / np.pi
+        delta = seq[:6] * self._args.delta_scale * rad_to_deg
         req = MoveJoint.Request()
         req.pos = delta.tolist()
         req.vel = self._args.move_vel
