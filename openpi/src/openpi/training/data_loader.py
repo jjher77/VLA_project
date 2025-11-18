@@ -1,4 +1,5 @@
 from collections.abc import Iterator, Sequence
+import glob
 import logging
 import multiprocessing
 import os
@@ -127,10 +128,82 @@ class FakeDataset(Dataset):
         return self._num_samples
 
 
+class DoosanNpDataset(Dataset):
+    def __init__(self, directory: str, action_horizon: int, pad_action_dim: int):
+        self._directory = os.path.expanduser(directory)
+        self._action_horizon = action_horizon
+        self._pad_action_dim = pad_action_dim
+        self._segments: list[tuple[str, int]] = []
+        paths = sorted(glob.glob(os.path.join(self._directory, "*.npz")))
+        if not paths:
+            raise ValueError(f"No .npz files found in {self._directory}")
+        for path in paths:
+            with np.load(path, allow_pickle=True) as data:
+                num_actions = data["actions"].shape[0]
+            if num_actions < action_horizon:
+                continue
+            for start in range(num_actions - action_horizon + 1):
+                self._segments.append((path, start))
+        if not self._segments:
+            raise ValueError(f"No segments extracted from {self._directory}.")
+        self._current_path: str | None = None
+        self._current_episode: dict[str, np.ndarray] | None = None
+
+    def __len__(self) -> int:
+        return len(self._segments)
+
+    def __getitem__(self, index: SupportsIndex) -> dict:
+        path, start = self._segments[index.__index__()]
+        episode = self._load_episode(path)
+
+        obs_idx = start
+        top = np.asarray(episode["observations/top_image"][obs_idx])
+        wrist = np.asarray(episode["observations/wrist_image"][obs_idx])
+        front = np.asarray(episode["observations/front_image"][obs_idx])
+        joint_pos = np.asarray(episode["observations/joint_position"][obs_idx])
+        gripper_pos = np.asarray(episode["observations/gripper_position"][obs_idx])
+        actions = np.asarray(episode["actions"][start : start + self._action_horizon])
+        prompt_arr = episode["prompt"]
+        prompt = prompt_arr.item() if getattr(prompt_arr, "shape", ()) == () else str(prompt_arr)
+
+        actions = self._pad_actions(actions)
+        return {
+            "observation/top_image": top,
+            "observation/wrist_image": wrist,
+            "observation/front_image": front,
+            "observation/joint_position": joint_pos,
+            "observation/gripper_position": gripper_pos,
+            "actions": actions,
+            "prompt": prompt,
+        }
+
+    def _pad_actions(self, actions: np.ndarray) -> np.ndarray:
+        if actions.shape[-1] >= self._pad_action_dim:
+            return actions[..., : self._pad_action_dim]
+        pad_width = self._pad_action_dim - actions.shape[-1]
+        pad_shape = ((0, 0), (0, pad_width))
+        return np.pad(actions, pad_shape, mode="constant")
+
+    def _load_episode(self, path: str) -> dict[str, np.ndarray]:
+        if self._current_path == path and self._current_episode is not None:
+            return self._current_episode
+        with np.load(path, allow_pickle=True) as data:
+            episode = {k: np.asarray(data[k]) for k in data.files}
+        self._current_path = path
+        self._current_episode = episode
+        return episode
+
+
 def create_torch_dataset(
     data_config: _config.DataConfig, action_horizon: int, model_config: _model.BaseModelConfig
 ) -> Dataset:
     """Create a dataset for training."""
+    if data_config.npz_dir is not None:
+        return DoosanNpDataset(
+            directory=data_config.npz_dir,
+            action_horizon=action_horizon,
+            pad_action_dim=model_config.action_dim,
+        )
     repo_id = data_config.repo_id
     if repo_id is None:
         raise ValueError("Repo ID is not set. Cannot create dataset.")

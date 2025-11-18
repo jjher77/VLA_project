@@ -65,6 +65,8 @@ class AssetsConfig:
 class DataConfig:
     # LeRobot repo id. If None, fake data will be created.
     repo_id: str | None = None
+    # Local directory containing NPZ episodes (Doosan custom dataset).
+    npz_dir: str | None = None
     # Directory within the assets directory containing the data assets.
     asset_id: str | None = None
     # Contains precomputed normalization stats. If None, normalization will not be performed.
@@ -636,12 +638,17 @@ _CONFIGS = [
         name="pi05_doosan_runtime",
         model=pi0_config.Pi0Config(action_horizon=15, pi05=True),
         data=SimpleDataConfig(
-            assets=AssetsConfig(asset_id="droid"),
+            repo_id="doosan_local",
+            assets=AssetsConfig(asset_id="doosan"),
             data_transforms=lambda model: _transforms.Group(
                 inputs=[doosan_policy.DoosanInputs(model_type=model.model_type)],
                 outputs=[doosan_policy.DoosanOutputs(dims=6)],
             ),
-            base_config=DataConfig(prompt_from_task=False),
+            base_config=DataConfig(
+                repo_id="doosan_local",
+                prompt_from_task=False,
+                npz_dir="~/doosan_dataset",
+            ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
     ),

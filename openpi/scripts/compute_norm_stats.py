@@ -5,6 +5,9 @@ will compute the mean and standard deviation of the data in the dataset and save
 to the config assets directory.
 """
 
+import glob
+import os
+
 import numpy as np
 import tqdm
 import tyro
@@ -19,6 +22,26 @@ import openpi.transforms as transforms
 class RemoveStrings(transforms.DataTransformFn):
     def __call__(self, x: dict) -> dict:
         return {k: v for k, v in x.items() if not np.issubdtype(np.asarray(v).dtype, np.str_)}
+
+
+def _compute_npz_stats(npz_dir: str, action_dim: int) -> dict[str, normalize.RunningStats]:
+    npz_dir = os.path.expanduser(npz_dir)
+    paths = sorted(glob.glob(os.path.join(npz_dir, "*.npz")))
+    if not paths:
+        raise ValueError(f"No NPZ files found in {npz_dir}")
+    stats = {key: normalize.RunningStats() for key in ["state", "actions"]}
+    for path in tqdm.tqdm(paths, desc="NPZ stats"):
+        with np.load(path, allow_pickle=True) as data:
+            joint = np.asarray(data["observations/joint_position"])
+            stats["state"].update(joint)
+            actions = np.asarray(data["actions"])
+            if actions.shape[-1] < action_dim:
+                pad_width = action_dim - actions.shape[-1]
+                actions = np.pad(actions, ((0, 0), (0, pad_width)))
+            elif actions.shape[-1] > action_dim:
+                actions = actions[..., :action_dim]
+            stats["actions"].update(actions)
+    return stats
 
 
 def create_torch_dataloader(
@@ -90,7 +113,9 @@ def main(config_name: str, max_frames: int | None = None):
     config = _config.get_config(config_name)
     data_config = config.data.create(config.assets_dirs, config.model)
 
-    if data_config.rlds_data_dir is not None:
+    if data_config.npz_dir is not None:
+        stats = _compute_npz_stats(data_config.npz_dir, config.model.action_dim)
+    elif data_config.rlds_data_dir is not None:
         data_loader, num_batches = create_rlds_dataloader(
             data_config, config.model.action_horizon, config.batch_size, max_frames
         )
@@ -99,12 +124,12 @@ def main(config_name: str, max_frames: int | None = None):
             data_config, config.model.action_horizon, config.batch_size, config.model, config.num_workers, max_frames
         )
 
-    keys = ["state", "actions"]
-    stats = {key: normalize.RunningStats() for key in keys}
+        keys = ["state", "actions"]
+        stats = {key: normalize.RunningStats() for key in keys}
 
-    for batch in tqdm.tqdm(data_loader, total=num_batches, desc="Computing stats"):
-        for key in keys:
-            stats[key].update(np.asarray(batch[key]))
+        for batch in tqdm.tqdm(data_loader, total=num_batches, desc="Computing stats"):
+            for key in keys:
+                stats[key].update(np.asarray(batch[key]))
 
     norm_stats = {key: stats.get_statistics() for key, stats in stats.items()}
 
