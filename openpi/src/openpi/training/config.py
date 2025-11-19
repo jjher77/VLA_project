@@ -497,7 +497,7 @@ class TrainConfig:
     # Random seed that will be used by random generators during training.
     seed: int = 42
     # Global batch size.
-    batch_size: int = 32
+    batch_size: int = 8
     # Number of workers to use for the data loader. Increasing this number will speed up data loading but
     # will increase memory and CPU usage.
     num_workers: int = 2
@@ -639,7 +639,7 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(action_horizon=15, pi05=True),
         data=SimpleDataConfig(
             repo_id="doosan_local",
-            assets=AssetsConfig(asset_id="doosan"),
+            assets=AssetsConfig(asset_id="doosan_local"),
             data_transforms=lambda model: _transforms.Group(
                 inputs=[doosan_policy.DoosanInputs(model_type=model.model_type)],
                 outputs=[doosan_policy.DoosanOutputs(dims=6)],
