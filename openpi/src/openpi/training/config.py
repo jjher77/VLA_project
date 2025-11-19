@@ -636,7 +636,7 @@ _CONFIGS = [
     ),
     TrainConfig(
         name="pi05_doosan_runtime",
-        model=pi0_config.Pi0Config(action_horizon=15, pi05=True),
+        model=pi0_config.Pi0Config(action_horizon=10, pi05=True),
         data=SimpleDataConfig(
             repo_id="doosan_local",
             assets=AssetsConfig(asset_id="doosan_local"),
@@ -651,6 +651,40 @@ _CONFIGS = [
             ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+    ),
+    TrainConfig(
+        name="pi05_doosan_lora",
+        model=pi0_config.Pi0Config(
+            action_horizon=10,
+            pi05=True,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=SimpleDataConfig(
+            repo_id="doosan_local",
+            assets=AssetsConfig(asset_id="doosan_local"),
+            data_transforms=lambda model: _transforms.Group(
+                inputs=[doosan_policy.DoosanInputs(model_type=model.model_type)],
+                outputs=[doosan_policy.DoosanOutputs(dims=6)],
+            ),
+            base_config=DataConfig(
+                repo_id="doosan_local",
+                prompt_from_task=False,
+                npz_dir="~/doosan_dataset",
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "/home/chan/openpi/checkpoints/pi05_doosan_runtime/doosan_first_train"
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=15,
+            pi05=True,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        num_train_steps=10_000,
+        batch_size=8,
     ),
     #
     # Fine-tuning Libero configs.
